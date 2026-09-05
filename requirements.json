@@ -1,0 +1,376 @@
+{
+  "requirements_version": {
+    "documentation": "Version du contrat de besoins interne utilisé pour décrire le projet à générer.",
+    "value": "requirements.v1"
+  },
+  "product_type": {
+    "documentation": "Nature du produit à générer pendant le cycle demandé.",
+    "value": "Prototype scientifique déterministe en Python, utilisable en ligne de commande, pour le screening de l'exposition professionnelle quotidienne au bruit."
+  },
+  "key_features": {
+    "documentation": "Fonctions métier et comportements que le moteur Python doit fournir. Ces exigences concernent le cycle 1 uniquement.",
+    "value": [
+      {
+        "id": "analyze_command",
+        "description": "Fournir la commande `python -m app.cli analyze`.",
+        "requirements": [
+          "Exiger les options --csv et --reference-db.",
+          "Accepter --scenario-csv, --format et --alert-margin-db.",
+          "Utiliser text comme format par défaut et accepter text ou json.",
+          "Utiliser 3.0 dB comme marge d'alerte par défaut.",
+          "Retourner 0 en cas de succès et 2 en cas d'erreur utilisateur."
+        ]
+      },
+      {
+        "id": "baseline_csv",
+        "description": "Lire et valider un fichier CSV local d'exposition sonore.",
+        "requirements": [
+          "Vérifier que le fichier existe et est lisible.",
+          "Exiger les colonnes worker, task, leq_db, duration_h et protection_db.",
+          "Compter toutes les lignes de données dans total_rows, sans compter l'en-tête.",
+          "Ignorer les lignes invalides mais les compter dans invalid_rows.",
+          "Compter les lignes utilisées dans valid_rows."
+        ]
+      },
+      {
+        "id": "row_validation",
+        "description": "Valider chaque ligne avant tout calcul.",
+        "requirements": [
+          "worker et task doivent être non vides.",
+          "leq_db doit être numérique et supérieur ou égal à 0.0.",
+          "duration_h doit être numérique et compris entre 0.0 et 24.0 inclus.",
+          "protection_db doit être numérique et supérieur ou égal à 0.0.",
+          "Une valeur vide ou non numérique rend la ligne invalide."
+        ]
+      },
+      {
+        "id": "segment_calculation",
+        "description": "Calculer chaque segment valide avec une méthode énergétique logarithmique.",
+        "requirements": [
+          "Ne jamais calculer une moyenne arithmétique des décibels.",
+          "Calculer effective_db = leq_db - protection_db.",
+          "Calculer sound_energy = duration_h * (10.0 ** (effective_db / 10.0)).",
+          "Calculer normalized_8h_energy = sound_energy / 8.0.",
+          "Calculer segment_lex_8h = 10.0 * log10(normalized_8h_energy) si cette énergie est strictement positive, sinon null.",
+          "Calculer energy_ratio = normalized_8h_energy / reference_energy.",
+          "Utiliser reference_energy = 10.0 ** (reference_db / 10.0).",
+          "Attribuer below_alert, alert ou above_reference selon la valeur de segment_lex_8h et la marge d'alerte."
+        ]
+      },
+      {
+        "id": "worker_aggregation",
+        "description": "Regrouper les segments valides par travailleur.",
+        "requirements": [
+          "Conserver l'identifiant non vide du worker.",
+          "Calculer le nombre de segments, les tâches, la durée totale et l'énergie sonore totale.",
+          "Calculer normalized_8h_energy, lex_8h et energy_ratio au niveau du worker.",
+          "Attribuer un statut déterministe à chaque worker.",
+          "Ne retenir que les segments valides."
+        ]
+      },
+      {
+        "id": "global_summary",
+        "description": "Produire une synthèse globale cohérente avec les segments et les workers.",
+        "requirements": [
+          "Inclure reference_db.",
+          "Inclure max_worker_lex_8h et max_worker_energy_ratio.",
+          "Inclure workers_above_reference et segments_above_reference.",
+          "Inclure les compteurs total_rows, valid_rows, invalid_rows, workers, tasks et scenarios."
+        ]
+      },
+      {
+        "id": "scenario_analysis",
+        "description": "Analyser facultativement un fichier CSV de scénarios comparables au résultat de base.",
+        "requirements": [
+          "Le fichier est facultatif ; sans --scenario-csv, scenarios doit être une liste vide et counts.scenarios doit valoir 0.",
+          "Exiger les colonnes scenario, leq_delta_db, duration_factor et protection_delta_db lorsqu'un fichier est fourni.",
+          "Le nom scenario doit être non vide et unique.",
+          "duration_factor doit être numérique et supérieur ou égal à 0.0.",
+          "leq_delta_db et protection_delta_db doivent être numériques.",
+          "Appliquer scenario_leq_db = leq_db + leq_delta_db.",
+          "Appliquer scenario_duration_h = duration_h * duration_factor.",
+          "Appliquer scenario_protection_db = protection_db + protection_delta_db.",
+          "Utiliser uniquement les segments de base valides.",
+          "Calculer pour chaque scénario les mêmes indicateurs globaux que pour la base et reduction_db_vs_baseline_max."
+        ]
+      },
+      {
+        "id": "quality_verdict",
+        "description": "Produire un verdict global de screening et des raisons explicites.",
+        "requirements": [
+          "Le verdict doit être pass, warn ou fail.",
+          "fail si aucune ligne valide n'existe, si un worker dépasse 24 heures au total ou si un worker dépasse reference_db.",
+          "warn si le verdict n'est pas fail et si des lignes invalides ont été ignorées ou si un worker atteint le seuil d'alerte.",
+          "pass si au moins une ligne valide existe, qu'aucune ligne invalide n'a été ignorée, qu'aucun worker ne dépasse 24 heures et que tous les workers sont strictement sous reference_db - alert_margin_db.",
+          "Produire les raisons dans l'ordre no_valid_rows, worker_duration_over_24h, noise_above_reference, invalid_rows_ignored, noise_at_or_above_alert, all_screening_checks_passed."
+        ]
+      },
+      {
+        "id": "output_rendering",
+        "description": "Produire des sorties textuelles et JSON stables.",
+        "requirements": [
+          "Le texte doit être lisible par un humain et exposer les résultats par worker, la synthèse et le verdict.",
+          "Le JSON doit être exploitable par des tests automatisés.",
+          "Le texte et le JSON doivent décrire exactement le même calcul, les mêmes identifiants, scénarios, verdict et raisons.",
+          "Les renderers doivent rendre le payload reçu sans le remplacer par un ancien contrat interne."
+        ]
+      }
+    ]
+  },
+  "constraints": {
+    "documentation": "Contraintes obligatoires de fonctionnement, de portée et de sécurité pour le cycle 1.",
+    "value": [
+      "Le projet s'appelle NoiseDoseLab.",
+      "Le périmètre de cette génération est limité au moteur Python et à sa CLI ; l'interface utilisateur est réservée au cycle 2.",
+      "Le prototype est un outil de screening scientifique déterministe et ne constitue pas une évaluation réglementaire définitive du risque sonore.",
+      "Aucun accès réseau.",
+      "Aucune dépendance obligatoire hors bibliothèque standard Python.",
+      "Compatibilité Windows et systèmes POSIX.",
+      "Tous les modules applicatifs doivent se trouver sous app/ ; ne pas créer de package top-level core/.",
+      "Les modules doivent être import-safe : un import ne doit ni lire de fichier, ni lancer la CLI, ni écrire sur stdout ou stderr.",
+      "Les résultats numériques publics sont arrondis à six décimales avec round(value, 6).",
+      "Les nombres JSON doivent rester des nombres JSON et ne doivent jamais être convertis en chaînes.",
+      "Toute valeur arrondie égale à 0.0 doit être rendue comme 0.0, jamais comme -0.0.",
+      "Les valeurs logarithmiques non calculables doivent être rendues comme null en JSON.",
+      "Le contenu public ne doit contenir ni horodatage, ni identifiant aléatoire, ni chemin absolu, ni message brut du système d'exploitation.",
+      "Les erreurs utilisateur doivent retourner le code 2.",
+      "--help et le mode sans argument doivent retourner le code 0 ; le mode sans argument doit afficher une aide courte.",
+      "Le calcul doit fonctionner avec une seule ligne valide.",
+      "Ne pas utiliser NumPy, SciPy, pandas, de modèle dose-réponse, de simulation Monte-Carlo ou d'ajustement statistique avancé.",
+      "Ne jamais inclure de clé API, mot de passe, secret ou valeur d'identification dans les fichiers générés.",
+      "Les journaux de conversation éventuels restent des artefacts internes séparés et ne doivent pas être intégrés aux données métier publiques du moteur."
+    ]
+  },
+  "dependencies": {
+    "documentation": "Bibliothèques et ressources existantes dont le moteur peut dépendre.",
+    "value": [
+      "Python 3.11 ou version compatible.",
+      "Bibliothèque standard Python uniquement, notamment csv, argparse, json, math, pathlib et dataclasses si utile.",
+      "Aucune base de données, aucun serveur, aucun cache et aucun service externe."
+    ]
+  },
+  "required_integrations": {
+    "documentation": "Services externes obligatoires pour le fonctionnement du cycle 1.",
+    "value": []
+  },
+  "product_surface": {
+    "documentation": "Surface fonctionnelle exposée par le produit pendant le cycle 1. Il ne s'agit pas d'une interface graphique.",
+    "value": {
+      "cycle": "cycle_1_python_engine",
+      "entrypoint": "python -m app.cli",
+      "primary_command": "analyze",
+      "canonical_invocation": "python -m app.cli analyze --csv fixtures/noise.csv --reference-db 85 --format json",
+      "components": [
+        "CLI et aide",
+        "Lecture CSV et validation des lignes",
+        "Calculs énergétiques purs",
+        "Agrégation par worker",
+        "Analyse optionnelle des scénarios",
+        "Synthèse et verdict",
+        "Rendu texte",
+        "Rendu JSON",
+        "Gestion centralisée des erreurs utilisateur"
+      ],
+      "data": {
+        "baseline_columns": ["worker", "task", "leq_db", "duration_h", "protection_db"],
+        "scenario_columns": ["scenario", "leq_delta_db", "duration_factor", "protection_delta_db"],
+        "row_index": "Indice 1-based de la ligne de données CSV, sans compter l'en-tête.",
+        "validity_scope": "Les agrégations de base et de scénario utilisent uniquement les segments valides."
+      },
+      "actions": [
+        "Lancer --help.",
+        "Lancer la commande sans argument et recevoir une aide courte avec code 0.",
+        "Lancer analyze sur un CSV de base.",
+        "Lancer analyze avec une sortie text.",
+        "Lancer analyze avec une sortie JSON.",
+        "Lancer analyze avec un CSV de scénarios.",
+        "Recevoir une erreur courte sur stderr et le code 2 en cas d'entrée invalide."
+      ],
+      "out_of_scope": [
+        "Interface graphique ou interface web ; cycle 2.",
+        "Authentification et gestion des utilisateurs ; cycle 2 si nécessaire.",
+        "Stockage distant ou accès à une base de données.",
+        "Décision réglementaire ou avis médical automatisé définitif."
+      ]
+    }
+  },
+  "context_of_use": {
+    "documentation": "Contexte humain et opérationnel dans lequel le prototype sera utilisé.",
+    "value": {
+      "who": "Professionnels de santé au travail, préventeurs, analystes ou développeurs qui souhaitent effectuer un premier screening reproductible à partir d'un fichier CSV local.",
+      "moment": "Après la collecte de segments d'exposition sonore et avant une analyse réglementaire ou une décision de prévention complète.",
+      "decision_or_outcome": "Repérer les workers ou segments proches ou au-dessus d'un niveau de référence, comprendre les raisons du verdict et identifier les données invalides à corriger.",
+      "time_available": "Le calcul doit être local, rapide, reproductible et utilisable depuis une commande documentée.",
+      "scientific_scope": "Le modèle est volontairement de niveau 1 : il applique les règles énergétiques explicites du contrat et ne prétend pas couvrir toute la réglementation de l'exposition au bruit."
+    }
+  },
+  "constraints_and_taste": {
+    "documentation": "Préférences de présentation et contraintes d'expérience applicables au projet. Pour le cycle 1, elles concernent principalement la sobriété des sorties CLI.",
+    "value": {
+      "platform_or_device": "Windows et POSIX ; exécution dans un terminal Python.",
+      "visual_tone": "Sobre, scientifique, lisible et orienté vérification ; aucune décoration inutile.",
+      "layout_assumptions": "Aucune mise en page graphique au cycle 1 ; le texte doit rester lisible dans un terminal courant.",
+      "color_system": "Aucun code couleur obligatoire au cycle 1 ; les statuts doivent être exprimés par des valeurs textuelles stables.",
+      "responsiveness_or_accessibility_needs": "L'accessibilité et la responsivité de l'interface seront traitées au cycle 2 ; les sorties texte doivent toutefois rester compréhensibles sans couleur."
+    }
+  },
+  "behavior_contract": {
+    "documentation": "Contrat comportemental public du moteur Python, destiné à guider la génération et les contrôles.",
+    "value": {
+      "command": {
+        "required_args": ["--csv", "--reference-db"],
+        "optional_args": ["--scenario-csv", "--format", "--alert-margin-db"],
+        "default_format": "text",
+        "format_values": ["text", "json"],
+        "default_alert_margin_db": 3.0,
+        "success_rc": 0,
+        "bad_input_rc": 2
+      },
+      "status_rules": {
+        "below_alert": "La valeur LEX,8h est null ou strictement inférieure à reference_db moins alert_margin_db.",
+        "alert": "La valeur LEX,8h est supérieure ou égale à reference_db moins alert_margin_db et inférieure ou égale à reference_db.",
+        "above_reference": "La valeur LEX,8h est strictement supérieure à reference_db."
+      },
+      "quality_rules": {
+        "fail": [
+          "Aucune ligne valide.",
+          "Au moins un worker a une durée totale strictement supérieure à 24.0 heures.",
+          "Au moins un worker a un lex_8h strictement supérieur à reference_db."
+        ],
+        "warn": [
+          "Le verdict n'est pas fail et au moins une ligne invalide a été ignorée.",
+          "Le verdict n'est pas fail et au moins un worker atteint le seuil reference_db - alert_margin_db."
+        ],
+        "pass": [
+          "Au moins une ligne valide existe.",
+          "Aucune ligne invalide n'a été ignorée.",
+          "Aucun worker ne dépasse 24.0 heures.",
+          "Tous les workers sont strictement sous reference_db - alert_margin_db."
+        ],
+        "reason_order": [
+          "no_valid_rows",
+          "worker_duration_over_24h",
+          "noise_above_reference",
+          "invalid_rows_ignored",
+          "noise_at_or_above_alert",
+          "all_screening_checks_passed"
+        ]
+      },
+      "deterministic_order": {
+        "segments": "worker, task, row_index",
+        "workers": "worker, ordre alphabétique",
+        "tasks": "ordre alphabétique dans chaque worker",
+        "scenarios": "scenario, ordre alphabétique"
+      }
+    }
+  },
+  "output_contract": {
+    "documentation": "Structure et sémantique des sorties publiques du moteur.",
+    "value": {
+      "json_schema_version": "noisedoselab_level1_report.v1",
+      "json_top_level_sections": [
+        "schema_version",
+        "status",
+        "input",
+        "counts",
+        "segments",
+        "workers",
+        "summary",
+        "scenarios",
+        "verdict",
+        "reasons"
+      ],
+      "json_required_segment_fields": [
+        "row_index",
+        "worker",
+        "task",
+        "leq_db",
+        "duration_h",
+        "protection_db",
+        "effective_db",
+        "sound_energy",
+        "normalized_8h_energy",
+        "segment_lex_8h",
+        "energy_ratio",
+        "status"
+      ],
+      "json_required_worker_fields": [
+        "worker",
+        "segments",
+        "tasks",
+        "total_duration_h",
+        "total_sound_energy",
+        "normalized_8h_energy",
+        "lex_8h",
+        "energy_ratio",
+        "status"
+      ],
+      "json_required_scenario_fields": [
+        "scenario",
+        "max_worker_lex_8h",
+        "max_worker_energy_ratio",
+        "workers_above_reference",
+        "segments_above_reference",
+        "reduction_db_vs_baseline_max"
+      ],
+      "text_required_fragments": [
+        "NoiseDoseLab",
+        "valid_rows:",
+        "workers:",
+        "reference_db:",
+        "verdict:"
+      ],
+      "allowed_statuses": ["below_alert", "alert", "above_reference"],
+      "allowed_verdicts": ["pass", "warn", "fail"],
+      "allowed_reasons": [
+        "no_valid_rows",
+        "worker_duration_over_24h",
+        "noise_above_reference",
+        "invalid_rows_ignored",
+        "noise_at_or_above_alert",
+        "all_screening_checks_passed"
+      ]
+    }
+  },
+  "error_contract": {
+    "documentation": "Erreurs d'entrée attendues et comportement CLI associé.",
+    "value": {
+      "all_user_input_errors": {
+        "return_code": 2,
+        "stderr_required": true,
+        "message_policy": "Message court, stable, sans chemin absolu ni exception système brute."
+      },
+      "required_diagnostics": {
+        "missing_csv": "Mentionner --csv.",
+        "missing_reference_db": "Mentionner --reference-db.",
+        "bad_reference_db": "Mentionner reference-db.",
+        "missing_file": "Mentionner csv.",
+        "missing_column": "Mentionner missing required column.",
+        "bad_format": "Mentionner invalid choice.",
+        "bad_alert_margin_db": "Mentionner alert-margin-db.",
+        "invalid_scenario_csv": "Mentionner scenario."
+      }
+    }
+  },
+  "generation_notes": {
+    "documentation": "Consignes de génération et de vérification destinées au générateur, sans modifier la portée métier.",
+    "value": {
+      "architecture": [
+        "Séparer la CLI, la lecture CSV, la validation, les calculs, l'agrégation, les scénarios, le verdict et le rendu.",
+        "Conserver les calculs de bruit sous forme de fonctions pures.",
+        "Centraliser les erreurs utilisateur et les codes de retour.",
+        "Éviter une architecture monolithique afin de permettre des corrections ciblées.",
+        "Préférer des helpers privés top-level inspectables plutôt que des helpers imbriqués."
+      ],
+      "verification": [
+        "Tester la structure JSON et les types numériques publics.",
+        "Tester les calculs énergétiques sur des cas simples et sur une seule ligne valide.",
+        "Tester les lignes invalides, les colonnes manquantes, les scénarios invalides et les codes de retour.",
+        "Tester la cohérence entre les sorties text et JSON.",
+        "Tester la stabilité de l'ordre, de l'arrondi et de l'absence de -0.0.",
+        "Distinguer les propriétés garanties par des tests exécutables des simples informations documentaires."
+      ],
+      "cycle_boundary": "Ne pas générer d'interface web, de composants React, de page V0 ou de style graphique dans ce cycle 1."
+    }
+  }
+}
