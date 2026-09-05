@@ -1,0 +1,15 @@
+[project]
+name = "noisedoselab-backend"
+version = "0.2.0"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "python-multipart>=0.0.20,<1",
+]
+
+[project.optional-dependencies]
+test = ["httpx>=0.28,<1"]
+
+[tool.pytest.ini_options]
+pythonpath = [".."]
+testpaths = ["tests"]
