@@ -48,7 +48,9 @@ class NoiseDoseLabContractTests(unittest.TestCase):
         self.temporary_directory.cleanup()
 
     def write(self, name: str, content: str) -> Path:
+        """Write one UTF-8 fixture and create its explicit parent directory when needed."""
         path = self.directory / name
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         return path
 
@@ -76,6 +78,18 @@ class NoiseDoseLabContractTests(unittest.TestCase):
                 result = run_cli(*arguments)
                 self.assertEqual(result.returncode, 2)
                 self.assertIn(diagnostic, result.stderr)
+                self.assertEqual(result.stdout, "")
+
+    def test_reference_db_must_be_strictly_positive(self) -> None:
+        """Reject zero and negative reference values through the public CLI error path."""
+        baseline = self.baseline("alice,press,80,8,0\n")
+        for value in ("0", "-85"):
+            with self.subTest(value=value):
+                result = run_cli(
+                    "analyze", "--csv", str(baseline), "--reference-db", value
+                )
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("reference-db", result.stderr)
                 self.assertEqual(result.stdout, "")
 
     def test_missing_file_and_column_are_stable_user_errors(self) -> None:
@@ -107,6 +121,28 @@ class NoiseDoseLabContractTests(unittest.TestCase):
         self.assertIsInstance(segment["energy_ratio"], float)
         self.assertEqual(payload["workers"][0]["lex_8h"], 80.0)
         self.assertEqual(payload["verdict"], "pass")
+
+    def test_input_paths_are_preserved_as_supplied(self) -> None:
+        """Keep caller-supplied baseline and scenario paths in the public JSON payload."""
+        baseline = self.baseline("alice,press,80,8,0\n")
+        scenario = self.write(
+            "nested/scenarios.csv", SCENARIO_HEADER + "quiet,-3,1,0\n"
+        )
+        result = run_cli(
+            "analyze",
+            "--csv",
+            str(baseline),
+            "--reference-db",
+            "85",
+            "--scenario-csv",
+            str(scenario),
+            "--format",
+            "json",
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["input"]["csv"], str(baseline))
+        self.assertEqual(payload["input"]["scenario_csv"], str(scenario))
 
     def test_invalid_rows_are_ignored_counted_and_warn(self) -> None:
         path = self.baseline(

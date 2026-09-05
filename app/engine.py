@@ -67,8 +67,8 @@ def analyze(
         "schema_version": SCHEMA_VERSION,
         "status": "ok",
         "input": {
-            "csv": csv_path.name,
-            "scenario_csv": scenario_csv_path.name if scenario_csv_path else None,
+            "csv": str(csv_path),
+            "scenario_csv": str(scenario_csv_path) if scenario_csv_path else None,
             "reference_db": reference_db,
             "alert_margin_db": alert_margin_db,
         },

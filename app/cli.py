@@ -13,14 +13,18 @@ class _Parser(argparse.ArgumentParser):
         raise UserInputError(message)
 
 
-def _finite_float(option_name: str):
+def _finite_float(option_name: str, *, strictly_positive: bool = False):
+    """Parse one finite CLI number and optionally require a strictly positive value."""
     def parse(value: str) -> float:
+        """Convert one textual option value into its validated numeric representation."""
         try:
             number = float(value)
         except ValueError:
             raise argparse.ArgumentTypeError(f"{option_name} must be numeric") from None
         if not math.isfinite(number):
             raise argparse.ArgumentTypeError(f"{option_name} must be numeric")
+        if strictly_positive and number <= 0.0:
+            raise argparse.ArgumentTypeError(f"{option_name} must be strictly positive")
         return number
 
     return parse
@@ -32,7 +36,9 @@ def _build_parser() -> _Parser:
     analyze_parser = subparsers.add_parser("analyze", help="analyze a local exposure CSV")
     analyze_parser.add_argument("--csv", required=True, type=Path)
     analyze_parser.add_argument(
-        "--reference-db", required=True, type=_finite_float("reference-db")
+        "--reference-db",
+        required=True,
+        type=_finite_float("reference-db", strictly_positive=True),
     )
     analyze_parser.add_argument("--scenario-csv", type=Path)
     analyze_parser.add_argument("--format", choices=("text", "json"), default="text")
